@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MotorGuard BLE Bridge</title>
+</head>
+<body style="font-family:Arial; background:#0f172a; color:white; text-align:center; padding:20px;">
+
+<h2>MotorGuard BLE Bridge</h2>
+
+<button onclick="connectBLE()">Connect ESP32</button>
+
+<p id="status">Disconnected</p>
+
+<script>
+let device;
+let characteristic;
+
+async function connectBLE() {
+    try {
+        document.getElementById("status").innerText = "Connecting...";
+
+        // Connect to ESP32 BLE
+        device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb']
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+
+        characteristic = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+
+        characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', handleData);
+
+        document.getElementById("status").innerText = "Connected to ESP32";
+
+    } catch (error) {
+        alert("BLE Error: " + error);
+    }
+}
+
+function handleData(event) {
+    let decoder = new TextDecoder();
+    let data = decoder.decode(event.target.value);
+
+    console.log("BLE DATA:", data);
+
+    try {
+        let obj = JSON.parse(data);
+
+        // SEND TO PHP SERVER
+        fetch("../update_location.php?lat=" + obj.lat + "&lng=" + obj.lng)
+        .then(res => res.text())
+        .then(res => {
+            console.log("Server:", res);
+        });
+
+    } catch (e) {
+        console.log("Invalid JSON:", data);
+    }
+}
+</script>
+
+</body>
+</html>
