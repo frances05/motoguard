@@ -16,7 +16,6 @@ if(!isset($_SESSION['geofence'])){
     <style>
         body{ margin:0; font-family:Segoe UI; background:#0f172a; color:white; overflow-x: hidden; }
         
-        /* New Header Section for Back Button */
         .header-bar {
             padding: 15px;
             background: #0f172a;
@@ -34,7 +33,7 @@ if(!isset($_SESSION['geofence'])){
             font-size: 14px;
         }
 
-        #map{ height:55vh; width: 100%; }
+        #map{ height:55vh; width: 100%; transition: all 0.5s ease; }
         .leaflet-div-icon{ background:transparent !important; border:none !important; }
         
         .panel{ position:fixed; bottom:0; width:100%; background:rgba(30,41,59,0.95); padding:15px; box-sizing:border-box; border-top: 1px solid #334155; z-index: 1000; }
@@ -93,20 +92,24 @@ if(!isset($_SESSION['geofence'])){
     let map = L.map('map', { zoomControl: false }).setView([geo.lat, geo.lng], 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // BLUE ARROW
     let vehicle = L.marker([geo.lat, geo.lng], { 
         icon: L.divIcon({ html:"<div style='color:#38bdf8;font-size:24px;transform:rotate(-45deg);'>➤</div>", className:"" }) 
     }).addTo(map);
 
-    // BLUE DRAWLINE
     let path = [], line = L.polyline([], {color:"#38bdf8", weight:5, opacity:0.8}).addTo(map);
     
     let tracking = false, circle = null, engineKilled = false;
     let lastLat = null, lastLng = null, totalDistance = 0, sessionStartTime = null;
 
-    function showAlert(msg){ let t=document.getElementById('toast'); t.innerText=msg; t.style.display='block'; setTimeout(()=>t.style.display='none', 2500); }
+    function showAlert(msg){ 
+        let t=document.getElementById('toast'); 
+        t.innerText=msg; 
+        t.style.display='block'; 
+        setTimeout(()=>t.style.display='none', 2500); 
+    }
 
     function moveMap(lat, lng) {
+        if (!tracking) return; // Don't auto-move if we aren't tracking
         if (!lastLat) {
             map.flyTo([lat, lng], 17, { duration: 1.2 });
         } else {
@@ -117,27 +120,46 @@ if(!isset($_SESSION['geofence'])){
     }
 
     function startTracking(){
-        tracking = true; path = []; totalDistance = 0; 
+        tracking = true; 
+        path = []; 
+        totalDistance = 0; 
+        line.setLatLngs([]); // Clear previous line
         sessionStartTime = new Date().toLocaleString();
         showAlert("📍 Tracking Started");
+        // Zoom in to focus on tracking
+        if(lastLat) map.flyTo([lastLat, lastLng], 17, { duration: 1.5 });
     }
 
     function stopTracking(){
-        if(tracking && path.length > 1){
-            let routes = JSON.parse(localStorage.getItem("routes") || "[]");
-            routes.push({ date: sessionStartTime, distance: totalDistance, path: path });
-            localStorage.setItem("routes", JSON.stringify(routes));
-            showAlert("✅ Trip Saved to History");
+        if(tracking){
+            if(path.length > 1){
+                // Save trip to history
+                let routes = JSON.parse(localStorage.getItem("routes") || "[]");
+                routes.push({ date: sessionStartTime, distance: totalDistance, path: path });
+                localStorage.setItem("routes", JSON.stringify(routes));
+                
+                // ANIMATION: Zoom out to show the entire traveled path
+                let bounds = L.polyline(path).getBounds();
+                map.flyToBounds(bounds, { 
+                    padding: [50, 50], 
+                    duration: 2.0 
+                });
+                
+                showAlert("✅ Trip Saved & Overview Generated");
+            } else {
+                // Just zoom out slightly if no path was made
+                map.flyTo([lastLat, lastLng], 14, { duration: 1.5 });
+                showAlert("🛑 Tracking Stopped");
+            }
         }
         tracking = false;
-        showAlert("🛑 Tracking Stopped");
     }
 
     function updatePosition(lat, lng){
         vehicle.setLatLng([lat, lng]);
-        moveMap(lat, lng);
-
+        
         if(tracking){
+            moveMap(lat, lng);
             if(lastLat !== null){
                 let d = map.distance([lastLat, lastLng], [lat, lng]);
                 if(d > 5){
